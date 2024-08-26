@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "868573271277",
+    "firebase_url": "https://fir-2-b724c-default-rtdb.firebaseio.com",
+    "project_id": "fir-2-b724c",
+    "storage_bucket": "fir-2-b724c.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:868573271277:android:dbdbd6dae92b2ece3ee8e4",
+        "android_client_info": {
+          "package_name": "com.firebaseflutter.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKBwDjMpbeyGWFb6h12bHuxKwMLtWEgZk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
