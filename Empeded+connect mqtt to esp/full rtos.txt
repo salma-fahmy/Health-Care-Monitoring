@@ -1,0 +1,198 @@
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include "MAX30100_PulseOximeter.h"
+
+// Defining pins for the sensors
+#define DS18B20_PIN 4    // Pin connected to the DS18B20 temperature sensor 
+#define ECG_PIN 34       // Pin connected to the AD8232 ECG sensor
+#define PRESSURE_PIN 35  // Pin connected to the MPS20N0040D-GDF pressure sensor
+#define IR_SENSOR_PIN 18 // Pin connected to the IR sensor
+#define REPORTING_PERIOD_MS 1000 // Interval to report MAX30100 sensor readings
+
+// Sensor libraries and configurations
+OneWire oneWire(DS18B20_PIN); // OneWire setup for DS18B20 sensor
+DallasTemperature sensors(&oneWire); // DallasTemperature setup
+PulseOximeter pox; // MAX30100 Pulse Oximeter setup
+
+// Thresholds to determine if values are abnormal
+#define TEMPERATURE_THRESHOLD 30.0 // Threshold for temperature in Celsius
+#define ECG_THRESHOLD 512 // Threshold for ECG reading (analog value)
+#define PRESSURE_THRESHOLD 500 // Threshold for pressure reading (modify based on sensor calibration)
+
+// Tracking time for periodic MAX30100 reporting
+uint32_t tsLastReport = 0;
+
+// FreeRTOS tasks
+void TaskTemperature(void *pvParameters);
+void TaskECG(void *pvParameters);
+void TaskPressure(void *pvParameters);
+void TaskPulseOximeter(void *pvParameters);
+
+// Callback function triggered when a beat is detected
+void onBeatDetected() {
+  Serial.println("Beat detected!"); // Simple indication of a detected pulse
+}
+
+void setup() {
+  Serial.begin(115200); // Start serial communication for debugging and monitoring
+
+  // Initialize the temperature sensor (DS18B20)
+  sensors.begin();
+
+  // Initialize the MAX30100 Pulse Oximeter sensor
+  if (!pox.begin()) {
+    Serial.println("Failed to initialize MAX30100. Please check connections.");
+    for (;;); // Stop the program if initialization fails
+  } else {
+    Serial.println("MAX30100 successfully initialized.");
+  }
+  
+  // Set the IR LED current for the Pulse Oximeter
+  pox.setIRLedCurrent(MAX30100_LED_CURR_46_8MA);
+  
+  // Set up the callback for beat detection
+  pox.setOnBeatDetectedCallback(onBeatDetected);
+
+  // Set the modes for the sensor pins
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(ECG_PIN, INPUT);
+  pinMode(PRESSURE_PIN, INPUT);
+
+  // Create FreeRTOS tasks to handle each sensor's operations
+  xTaskCreatePinnedToCore(TaskTemperature, "Temperature Task", 10000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(TaskECG, "ECG Task", 10000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(TaskPressure, "Pressure Task", 10000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(TaskPulseOximeter, "Pulse Oximeter Task", 10000, NULL, 1, NULL, 1);
+}
+
+void loop() {
+  // The main loop is intentionally empty since all the work is done by FreeRTOS tasks
+}
+
+void TaskTemperature(void *pvParameters) {
+  (void) pvParameters;
+
+  for (;;) {
+    // Check if a person is detected using the IR sensor
+    bool personDetected = digitalRead(IR_SENSOR_PIN) == LOW;
+
+    if (personDetected) {
+      // Request temperature reading from the DS18B20 sensor
+      sensors.requestTemperatures();
+      float temperature = sensors.getTempCByIndex(0); // Get the temperature reading
+      
+      Serial.print("Temperature: ");
+      Serial.print(temperature);
+      Serial.println(" °C");
+
+      // Check if the temperature exceeds the defined threshold
+      if (temperature >= TEMPERATURE_THRESHOLD) {
+        Serial.println("Warning: Temperature is above the threshold!");
+      }
+    } else {
+      Serial.println("No person detected by the IR sensor.");
+    }
+
+    // Wait for 5 seconds before checking again
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+  }
+}
+
+void TaskECG(void *pvParameters) {
+  (void) pvParameters;
+
+  for (;;) {
+    // Check if a person is detected using the IR sensor
+    bool personDetected = digitalRead(IR_SENSOR_PIN) == LOW;
+
+    if (personDetected) {
+      // Read the analog value from the ECG sensor
+      float ecgValue = analogRead(ECG_PIN);
+
+      Serial.print("ECG Value: ");
+      Serial.println(ecgValue);
+
+
+// Check if the ECG value exceeds the defined threshold
+      if (ecgValue >= ECG_THRESHOLD) {
+        Serial.println("Warning: Abnormal ECG detected!");
+      }
+    }
+
+    // Wait for 5 seconds before checking again
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+  }
+}
+
+void TaskPressure(void *pvParameters) {
+  (void) pvParameters;
+
+  for (;;) {
+    // Check if a person is detected using the IR sensor
+    bool personDetected = digitalRead(IR_SENSOR_PIN) == LOW;
+
+    if (personDetected) {
+      // Read the analog value from the pressure sensor and convert it to mmHg
+      float pressureValue = analogRead(PRESSURE_PIN) * (5.0 / 1023.0) * 100.0;
+
+      Serial.print("Pressure: ");
+      Serial.print(pressureValue);
+      Serial.println(" mmHg");
+
+      // Check if the pressure value exceeds the defined threshold
+      if (pressureValue >= PRESSURE_THRESHOLD) {
+        Serial.println("Warning: High pressure detected!");
+      }
+    }
+
+    // Wait for 5 seconds before checking again
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+  }
+}
+
+void TaskPulseOximeter(void *pvParameters) {
+  (void) pvParameters;
+
+  for (;;) {
+    // Update the Pulse Oximeter data continuously
+    pox.update();
+
+    // Report heart rate and SpO2 values every 1 second
+    if (millis() - tsLastReport > REPORTING_PERIOD_MS) {
+      Serial.print("Heart Rate: ");
+      Serial.print(pox.getHeartRate());
+      Serial.print(" bpm / SpO2: ");
+      Serial.print(pox.getSpO2());
+      Serial.println(" %");
+
+      // Reset the time for the next report
+      tsLastReport = millis();
+    }
+
+    // Short delay to allow continuous updates without consuming too much processing power
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+/*
+  This code implements a multi-sensor health monitoring system using an ESP32 microcontroller. The system monitors a person's vital signs including temperature, ECG (Electrocardiogram), blood pressure, heart rate, and blood oxygen levels (SpO2). The data is collected from several sensors and processed using FreeRTOS tasks, allowing multiple readings to occur concurrently without blocking the main loop.
+
+  Key Sensors and Their Functionality:
+  1. DS18B20: Measures body temperature in Celsius.
+  2. AD8232 ECG Sensor: Captures the electrical activity of the heart to detect abnormalities in heart function.
+  3. MPS20N0040D-GDF Pressure Sensor: Estimates blood pressure readings.
+  4. MAX30100 Pulse Oximeter: Measures heart rate and SpO2 levels to monitor the oxygen saturation in the blood.
+  5. IR Sensor: Detects the presence of a person. All sensor readings are only taken if a person is detected to ensure relevant data.
+
+  The code is structured using FreeRTOS tasks for each sensor, enabling parallel processing. Each task handles its respective sensor reading, checks if the measured values exceed defined thresholds, and outputs the results via serial communication. The system is designed with safety in mind; it provides alerts if any vital signs cross abnormal thresholds.
+
+  How It Works:
+  - The IR sensor continuously checks for a person’s presence. If someone is detected, the temperature, ECG, and pressure sensors are read and processed.
+  - The MAX30100 Pulse Oximeter continuously monitors heart rate and SpO2 levels.
+  - Thresholds are set to detect abnormal readings, triggering warning messages when exceeded.
+  - The system is designed for continuous monitoring with periodic updates and delays to maintain stability and avoid sensor overload.
+
+  The code is modular and scalable, allowing easy integration of additional sensors or features if needed. This setup could be useful for real-time patient monitoring, providing critical alerts when vital signs go out of normal ranges.
+*/

@@ -1,0 +1,229 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Sensor and pin definitions
+#define DS18B20_PIN 4    // DS18B20 temperature sensor (yellow wire)
+#define ECG_PIN 34       // AD8232 (ECG) sensor, connected to GPIO 34
+#define PRESSURE_PIN 35  // MPS20N0040D-GDF pressure sensor
+#define LCD_SDA_PIN 21   // LCD SDA pin
+#define LCD_SCL_PIN 22   // LCD SCL pin
+#define IR_SENSOR_PIN 18 // IR sensor
+
+// LED and buzzer definitions
+#define GREEN_LED_PIN 32 // Green LED pin
+#define RED_LED_PIN 33   // Red LED pin
+#define BUZZER_PIN 25    // Buzzer pin
+
+// Libraries used
+OneWire oneWire(DS18B20_PIN);
+DallasTemperature sensors(&oneWire);
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Set I2C address and LCD dimensions (16x2)
+
+int displayMode = 0; // Variable to track the currently displayed data
+unsigned long lastUpdate = 0; // Timing for the last display update
+const unsigned long UPDATE_INTERVAL = 5000; // Display interval for each data type (5 seconds)
+
+// Thresholds for normal and abnormal values
+#define TEMPERATURE_THRESHOLD_LOW 36.1 // Minimum normal temperature
+#define TEMPERATURE_THRESHOLD_HIGH 37.2 // Maximum normal temperature
+#define ECG_THRESHOLD 512 // ECG threshold (expected value from analog reading)
+#define PRESSURE_THRESHOLD 500 // Pressure threshold (adjust based on sensor type)
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN); // Initialize I2C for LCD with custom pins
+  lcd.begin(16, 2); // Initialize LCD with 16 columns and 2 rows
+  lcd.backlight();
+  sensors.begin();
+
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(ECG_PIN, INPUT);
+  pinMode(PRESSURE_PIN, INPUT);
+
+  // Initialize LEDs and buzzer pins
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  // Ensure LEDs and buzzer are off at startup
+  digitalWrite(GREEN_LED_PIN, LOW);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+// Function to classify temperature
+String classifyTemperature(float temperature) {
+  if (temperature < TEMPERATURE_THRESHOLD_LOW) {
+    return "Low";
+  } else if (temperature > TEMPERATURE_THRESHOLD_HIGH) {
+    return "High";
+  } else {
+    return "Normal";
+  }
+}
+
+// Function to classify ECG
+String classifyECG(float ecgValue) {
+  if (ecgValue < ECG_THRESHOLD) {
+    return "Normal";
+  } else {
+    return "High";
+  }
+}
+
+// Function to classify pressure
+String classifyPressure(float pressureValue) {
+  if (pressureValue < PRESSURE_THRESHOLD) {
+    return "Normal";
+  } else {
+    return "High";
+  }
+}
+
+// Function to display temperature on the LCD
+void displayTemperature(float temperature) {
+  String classification = classifyTemperature(temperature);
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Temp: ");
+  lcd.print(temperature);
+  lcd.print(" C");
+  lcd.setCursor(0, 1);
+  lcd.print("Class: ");
+  lcd.print(classification);
+
+  // Display classification on the Serial Monitor
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.print(" C, Classification: ");
+  Serial.println(classification);
+
+  // Check value status and control LEDs and buzzer
+  if (classification == "Normal") {
+    digitalWrite(GREEN_LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  } else {
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(500); // Activate the buzzer for 500 milliseconds
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+}
+
+// Function to display ECG value on the LCD
+void displayECG(float ecgValue) {
+  String classification = classifyECG(ecgValue);
+  
+  lcd.setCursor(0, 0);
+  lcd.print("ECG: ");
+  lcd.print(ecgValue);
+  lcd.setCursor(0, 1);
+  lcd.print("Class: ");
+  lcd.print(classification);
+
+  // Display classification on the Serial Monitor
+  Serial.print("ECG: ");
+  Serial.print(ecgValue);
+  Serial.print(", Classification: ");
+  Serial.println(classification);
+
+  // Check value status and control LEDs and buzzer
+  if (classification == "Normal") {
+    digitalWrite(GREEN_LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  } else {
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(500); // Activate the buzzer for 500 milliseconds
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+}
+
+// Function to display pressure value on the LCD
+void displayPressure(float pressureValue) {
+  String classification = classifyPressure(pressureValue);
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Pressure: ");
+  lcd.print(pressureValue);
+  lcd.print(" mmHg");
+  lcd.setCursor(0, 1);
+  lcd.print("Class: ");
+  lcd.print(classification);
+
+  // Display classification on the Serial Monitor
+  Serial.print("Pressure: ");
+  Serial.print(pressureValue);
+  Serial.print(" mmHg, Classification: ");
+  Serial.println(classification);
+
+  // Check value status and control LEDs and buzzer
+  if (classification == "Normal") {
+    digitalWrite(GREEN_LED_PIN, HIGH);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  } else {
+    digitalWrite(GREEN_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(500); // Activate the buzzer for 500 milliseconds
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+}
+
+// Function to display a message when no human is detected
+void displayNoHuman() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("No human detected");
+
+  // Display "No human detected" message on the Serial Monitor
+  Serial.println("No human detected");
+
+  // Turn off LEDs and buzzer
+  digitalWrite(GREEN_LED_PIN, LOW);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void loop() {
+  bool personDetected = digitalRead(IR_SENSOR_PIN) == LOW;
+
+  if (personDetected) {
+    unsigned long currentMillis = millis();
+
+    if (currentMillis - lastUpdate >= UPDATE_INTERVAL) {
+      lastUpdate = currentMillis; // Update the last display time
+
+      sensors.requestTemperatures();
+      float temperature = sensors.getTempCByIndex(0);
+      float ecgValue = analogRead(ECG_PIN); // Read ECG from GPIO 34
+      // Convert pressure to mmHg value
+      float pressureValue = analogRead(PRESSURE_PIN) * (5.0 / 1023.0) * 100.0;
+
+      lcd.clear();
+      switch (displayMode) {
+        case 0:
+          displayTemperature(temperature);
+          break;
+        case 1:
+          displayECG(ecgValue);
+          break;
+        case 2:
+          displayPressure(pressureValue);
+          break;
+      }
+
+      // Switch between display modes
+      displayMode = (displayMode + 1) % 3;
+    }
+  } else {
+    displayNoHuman();
+  }
+}

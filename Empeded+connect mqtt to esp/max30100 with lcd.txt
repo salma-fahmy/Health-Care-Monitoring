@@ -1,0 +1,52 @@
+#include <Wire.h>
+#include "MAX30100_PulseOximeter.h"
+
+#define REPORTING_PERIOD_MS 1000 // Defines the time period in milliseconds for reporting (1 second)
+
+// Create a PulseOximeter object to interface with the MAX30100 sensor
+PulseOximeter pox;
+
+// Variable to store the timestamp of the last heartbeat report
+uint32_t tsLastReport = 0;
+
+// Callback function that gets called every time a pulse (heartbeat) is detected
+void onBeatDetected() {
+    Serial.println("Beat!"); // Print "Beat!" to the Serial Monitor whenever a heartbeat is detected
+}
+
+void setup() {
+    Serial.begin(9600); // Initialize the serial communication at a baud rate of 9600
+
+    Serial.print("Initializing pulse oximeter..");
+
+    // Initialize the MAX30100 sensor and check if initialization is successful
+    if (!pox.begin()) {
+        Serial.println("FAILED"); // If initialization fails, print "FAILED" and halt the program
+        for(;;); // Infinite loop to stop the program in case of failure
+    } else {
+        Serial.println("SUCCESS"); // If initialization is successful, print "SUCCESS"
+    } 
+
+    // Set the current for the infrared (IR) LED to 46.8mA for the MAX30100 sensor
+    pox.setIRLedCurrent(MAX30100_LED_CURR_46_8MA);
+
+    // Register the callback function to be called whenever a beat is detected
+    pox.setOnBeatDetectedCallback(onBeatDetected);
+}
+
+void loop() {
+    // Update sensor data by reading the current values of heart rate and SpO2
+    pox.update();
+
+    // Check if the time since the last report is greater than the defined reporting period
+    if (millis() - tsLastReport > REPORTING_PERIOD_MS) {
+        Serial.print("Heart rate:"); // Print the label "Heart rate:" to the Serial Monitor
+        Serial.print(pox.getHeartRate()); // Get and print the current heart rate from the sensor
+        Serial.print("bpm / SpO2:"); // Print the label "bpm / SpO2:" (bpm = beats per minute)
+        Serial.print(pox.getSpO2()); // Get and print the current SpO2 (oxygen saturation) from the sensor
+        Serial.println("%"); // Print the percentage symbol and move to the next line
+
+        // Update the timestamp to the current time for the next report
+        tsLastReport = millis();
+    }
+}
